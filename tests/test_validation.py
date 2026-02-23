@@ -1,34 +1,170 @@
-def test_valid_city_cairo() -> None:
+import os
+from unittest.mock import Mock, patch
+
+import pytest
+
+from src.models import ValidationResult
+from src.validation import parse_groq_response, validate_answer_groq
+
+
+def test_parse_groq_response_ok() -> None:
     """
     Params: none.
     Returns: None.
-    Description: Accept a valid city with correct letter.
+    Description: parse_groq_response maps JSON fields into ValidationResult.
     Examples:
-        Input: answer="Cairo", letter="C", category="City"
-        Output: valid=True
+        Input: valid JSON
+        Output: ValidationResult(valid=True, corrected="Cairo")
     """
-    pass
+    text = '{"valid": true, "corrected": "Cairo", "reason": "ok", "categoryMatch": true}'
+    result = parse_groq_response(text)
+    assert isinstance(result, ValidationResult)
+    assert result.valid is True
+    assert result.corrected == "Cairo"
+    assert result.category_match is True
 
 
-def test_invalid_city_country() -> None:
+def test_validate_answer_groq_requires_key() -> None:
     """
     Params: none.
     Returns: None.
-    Description: Reject a country when category is city.
+    Description: validate_answer_groq raises when GROQ_API_KEY is missing.
     Examples:
-        Input: answer="Chile", letter="C", category="City"
+        Input: no env key
+        Output: RuntimeError
+    """
+    if "GROQ_API_KEY" in os.environ:
+        del os.environ["GROQ_API_KEY"]
+    with pytest.raises(RuntimeError):
+        validate_answer_groq("Cairo", "C", "City")
+
+
+def test_validate_answer_groq_letter_mismatch_forces_invalid() -> None:
+    """
+    Params: none.
+    Returns: None.
+    Description: If corrected answer starts with wrong letter, valid becomes False.
+    Examples:
+        Input: corrected="Berlin", letter="C"
         Output: valid=False
     """
-    pass
+    os.environ["GROQ_API_KEY"] = "test-key"
+    fake_response = Mock()
+    fake_response.raise_for_status = Mock()
+    fake_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"valid": true, "corrected": "Berlin", "reason": "ok", "categoryMatch": true}'
+                }
+            }
+        ]
+    }
+    with patch("src.validation.requests.post", return_value=fake_response):
+        result = validate_answer_groq("Berlin", "C", "City")
+        assert result.valid is False
 
 
-def test_correction_applied() -> None:
+def test_validate_answer_groq_category_mismatch_forces_invalid() -> None:
     """
     Params: none.
     Returns: None.
-    Description: Accept a misspelling corrected by Groq.
+    Description: If categoryMatch is false, valid becomes False.
     Examples:
-        Input: answer="Caihiro", letter="C", category="City"
-        Output: corrected="Cairo", valid=True
+        Input: categoryMatch=false
+        Output: valid=False
     """
-    pass
+    os.environ["GROQ_API_KEY"] = "test-key"
+    fake_response = Mock()
+    fake_response.raise_for_status = Mock()
+    fake_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"valid": true, "corrected": "Chile", "reason": "country", "categoryMatch": false}'
+                }
+            }
+        ]
+    }
+    with patch("src.validation.requests.post", return_value=fake_response):
+        result = validate_answer_groq("Chile", "C", "City")
+        assert result.valid is False
+
+
+def test_validate_answer_groq_valid() -> None:
+    """
+    Params: none.
+    Returns: None.
+    Description: Valid answer passes when letter and category match.
+    Examples:
+        Input: corrected="Cairo", categoryMatch=true
+        Output: valid=True
+    """
+    os.environ["GROQ_API_KEY"] = "test-key"
+    fake_response = Mock()
+    fake_response.raise_for_status = Mock()
+    fake_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"valid": true, "corrected": "Cairo", "reason": "ok", "categoryMatch": true}'
+                }
+            }
+        ]
+    }
+    with patch("src.validation.requests.post", return_value=fake_response):
+        result = validate_answer_groq("Caihiro", "C", "City")
+        assert result.valid is True
+
+
+def test_validate_answer_groq_cahiro_close_to_cairo() -> None:
+    """
+    Params: none.
+    Returns: None.
+    Description: Misspelled Cairo should be corrected and accepted for City + C.
+    Examples:
+        Input: answer="Cahiro", letter="C", category="City"
+        Output: valid=True, corrected="Cairo"
+    """
+    os.environ["GROQ_API_KEY"] = "test-key"
+    fake_response = Mock()
+    fake_response.raise_for_status = Mock()
+    fake_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"valid": true, "corrected": "Cairo", "reason": "spelling corrected", "categoryMatch": true}'
+                }
+            }
+        ]
+    }
+    with patch("src.validation.requests.post", return_value=fake_response):
+        result = validate_answer_groq("Cahiro", "C", "City")
+        assert result.valid is True
+        assert result.corrected == "Cairo"
+
+
+def test_validate_answer_groq_chile_country_false() -> None:
+    """
+    Params: none.
+    Returns: None.
+    Description: Chile should be rejected for Country + C per game rules.
+    Examples:
+        Input: answer="Chile", letter="C", category="Country"
+        Output: valid=False
+    """
+    os.environ["GROQ_API_KEY"] = "test-key"
+    fake_response = Mock()
+    fake_response.raise_for_status = Mock()
+    fake_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"valid": false, "corrected": "Chile", "reason": "not accepted", "categoryMatch": true}'
+                }
+            }
+        ]
+    }
+    with patch("src.validation.requests.post", return_value=fake_response):
+        result = validate_answer_groq("Chile", "C", "Country")
+        assert result.valid is False
