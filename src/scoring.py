@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from typing import List
 
-from .models import PlayerStats
+from src.models import PlayerStats
+
+
+def _safe_response_ms(response_ms: int) -> int:
+    """
+    Params: response time in ms.
+    Returns: non-negative response time.
+    Description: Clamp negative response times to zero.
+    Examples:
+        Input: response_ms=-5
+        Output: 0
+    """
+    return max(0, int(response_ms))
 
 
 def calc_time_bonus(response_ms: int) -> int:
@@ -16,7 +28,8 @@ def calc_time_bonus(response_ms: int) -> int:
         Input: response_ms=30000
         Output: 0
     """
-    return max(0, int(10 - (response_ms / 3000)))
+    safe_ms = _safe_response_ms(response_ms)
+    return max(0, int(10 - (safe_ms / 3000)))
 
 
 def score_answer(valid: bool, response_ms: int) -> int:
@@ -46,13 +59,14 @@ def update_player_stats(
         Input: stats.total_score=10, is_valid=True, response_ms=3000, score=19
         Output: stats.total_score=29, stats.answer_count=1
     """
+    safe_ms = _safe_response_ms(response_ms)
     stats.total_score += score
     stats.answer_count += 1
     if is_valid:
         stats.correct_count += 1
     # running average
     prev_total = stats.avg_response_ms * (stats.answer_count - 1)
-    stats.avg_response_ms = (prev_total + response_ms) / stats.answer_count
+    stats.avg_response_ms = (prev_total + safe_ms) / stats.answer_count
     return stats
 
 
