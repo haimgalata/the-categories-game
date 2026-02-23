@@ -1,63 +1,94 @@
 from __future__ import annotations
 
-from typing import Any
+from telegram import Update
+from telegram.ext import ContextTypes
+
+from .game_state import (
+    is_round_active,
+    record_answer,
+    reset_game,
+)
+from .models import now_ms
+from .round_logic import start_round
 
 
-def start_game(update: Any, context: Any) -> None:
+# -------------------------
+# Commands
+# -------------------------
+
+async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Params: Telegram update/context.
-    Returns: None.
-    Description: Create a new game for the group chat and start round 1.
-    Examples:
-        Input: update=<Update>, context=<Context>
-        Output: None
+    Start a new game (round 1).
     """
-    raise NotImplementedError("Create game state and call round start.")
+
+    chat_id = update.effective_chat.id
+
+    if is_round_active(chat_id):
+        await update.message.reply_text("⚠️ A round is already active!")
+        return
+
+    await start_round(chat_id, context.application)
 
 
-def stop_game(update: Any, context: Any) -> None:
+async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Params: Telegram update/context.
-    Returns: None.
-    Description: End the current game and display final stats.
-    Examples:
-        Input: update=<Update>, context=<Context>
-        Output: None
+    Stop current game and reset state.
     """
-    raise NotImplementedError("Stop game and send final stats.")
+
+    chat_id = update.effective_chat.id
+
+    reset_game(chat_id)
+
+    await update.message.reply_text("🛑 Game stopped and reset.")
 
 
-def score(update: Any, context: Any) -> None:
+async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Params: Telegram update/context.
-    Returns: None.
-    Description: Show the current leaderboard for the game.
-    Examples:
-        Input: update=<Update>, context=<Context>
-        Output: None
+    Placeholder for leaderboard (Guy will implement).
     """
-    raise NotImplementedError("Show current leaderboard.")
+
+    await update.message.reply_text("📊 Leaderboard will be available soon.")
 
 
-def handle_message(update: Any, context: Any) -> None:
+# -------------------------
+# Messages (Answers)
+# -------------------------
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Params: Telegram update/context.
-    Returns: None.
-    Description: Treat incoming messages as answers during active rounds.
-    Examples:
-        Input: update=<Update>, context=<Context>
-        Output: None
+    Collect answers during active round.
     """
-    raise NotImplementedError("Collect answers while round is active.")
+
+    chat_id = update.effective_chat.id
+
+    if not is_round_active(chat_id):
+        return
+
+    user = update.effective_user
+    text = update.message.text.strip()
+
+    accepted = record_answer(
+        chat_id=chat_id,
+        user_id=user.id,
+        text=text,
+        ts_ms=now_ms(),
+    )
+
+    if not accepted:
+        await update.message.reply_text("⚠️ You already answered this round.")
+    # אם התקבל — שקט, כדי לא להציף קבוצה
 
 
-def continue_game_callback(update: Any, context: Any) -> None:
+# -------------------------
+# Continue Callback (Future)
+# -------------------------
+
+async def continue_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Params: Telegram update/context.
-    Returns: None.
-    Description: Handle the continue/stop prompt after 5 rounds.
-    Examples:
-        Input: update=<Update>, context=<Context>
-        Output: None
+    Placeholder for continue / stop after 5 rounds.
     """
-    raise NotImplementedError("Handle continue/stop decision.")
+
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text("🔄 Continue feature coming soon.")

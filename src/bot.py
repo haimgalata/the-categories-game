@@ -1,39 +1,51 @@
 from __future__ import annotations
 
-from typing import Any
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+)
+
+from .handlers import (
+    start_game,
+    stop_game,
+    score,
+    handle_message,
+    continue_game_callback,
+)
 
 
-def build_application(token: str) -> Any:
+def build_application(token: str) -> Application:
     """
-    Params: token (bot token).
-    Returns: A python-telegram-bot Application.
-    Description: Create and configure the PTB application.
-    Examples:
-        Input: token="123:ABC"
-        Output: <Application>
+    Create and configure the PTB application.
     """
-    raise NotImplementedError("Build PTB Application and configure defaults.")
+    app = Application.builder().token(token).build()
+    return app
 
 
-def register_handlers(app: Any) -> None:
+def register_handlers(app: Application) -> None:
     """
-    Params: app (Application).
-    Returns: None.
-    Description: Attach all command and message handlers from handlers.py.
-    Examples:
-        Input: app=<Application>
-        Output: None
+    Attach all command and message handlers.
     """
-    raise NotImplementedError("Register command and message handlers.")
+
+    # Commands
+    app.add_handler(CommandHandler("start_game", start_game))
+    app.add_handler(CommandHandler("stop_game", stop_game))
+    app.add_handler(CommandHandler("score", score))
+
+    # Callback query (for Continue button later)
+    app.add_handler(CallbackQueryHandler(continue_game_callback))
+
+    # Regular messages (answers during round)
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
 
-def run_bot(app: Any) -> None:
+def run_bot(app: Application) -> None:
     """
-    Params: app (Application).
-    Returns: None.
-    Description: Start polling and keep the bot running.
-    Examples:
-        Input: app=<Application>
-        Output: None
+    Start polling and keep the bot running.
     """
-    raise NotImplementedError("Call app.run_polling() or similar.")
+    app.run_polling()

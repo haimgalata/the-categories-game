@@ -1,74 +1,125 @@
 from __future__ import annotations
 
 import random
-from typing import List, Any
+from typing import List
+
+from telegram.ext import Application, ContextTypes
 
 from .categories import load_categories
-from .game_state import finalize_round, set_round_prompt
+from .game_state import (
+    finalize_round,
+    set_round_prompt,
+    is_round_active,
+)
 from .models import RoundResult
 
 
+ROUND_DURATION_SECONDS = 30
+
+
+# -------------------------
+# Selection helpers
+# -------------------------
+
 def pick_letter() -> str:
-    """
-    Params: none.
-    Returns: A single uppercase letter A-Z.
-    Description: Randomly select the round letter.
-    Examples:
-        Input: none
-        Output: "C"
-    """
     return random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
 def pick_category(categories: List[str]) -> str:
-    """
-    Params: list of category strings.
-    Returns: One category.
-    Description: Randomly select a category.
-    Examples:
-        Input: ["City", "Country"]
-        Output: "City"
-    """
     if not categories:
         raise ValueError("categories list is empty")
     return random.choice(categories)
 
 
-def start_round(chat_id: int, app: Any) -> None:
+# -------------------------
+# Round lifecycle
+# -------------------------
+
+async def start_round(chat_id: int, app: Application) -> None:
     """
-    Params: chat_id, PTB application.
-    Returns: None.
-    Description: Initialize round state and announce prompt.
-    Examples:
-        Input: chat_id=1001, app=<Application>
-        Output: None
+    Start a new round safely.
     """
+
+    # Prevent double round
+    if is_round_active(chat_id):
+        return
+
+    # Cancel any leftover scheduled job
+    _cancel_existing_job(chat_id, app)
+
     letter = pick_letter()
     category = pick_category(load_categories())
+
     set_round_prompt(chat_id, letter, category)
-    # TODO: send a message to the chat and start a timer with PTB jobs.
+
+    await app.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"🎯 Round started!\n\n"
+            f"Letter: {letter}\n"
+            f"Category: {category}\n\n"
+            f"You have {ROUND_DURATION_SECONDS} seconds!"
+        ),
+    )
+
+    schedule_round_end(chat_id, app, ROUND_DURATION_SECONDS)
 
 
-def schedule_round_end(chat_id: int, app: Any, seconds: int) -> Any:
+def schedule_round_end(chat_id: int, app: Application, seconds: int):
     """
-    Params: chat_id, application, seconds.
-    Returns: A PTB Job object.
-    Description: Schedule the round end after N seconds.
-    Examples:
-        Input: chat_id=1001, app=<Application>, seconds=30
-        Output: <Job>
+    Schedule round ending using PTB JobQueue.
     """
-    raise NotImplementedError("Hook into PTB job queue to schedule round end.")
+
+    return app.job_queue.run_once(
+        _end_round_job,
+        when=seconds,
+        data={"chat_id": chat_id},
+        name=f"round_end_{chat_id}",
+    )
 
 
-def end_round(chat_id: int, app: Any) -> None:
+def _cancel_existing_job(chat_id: int, app: Application) -> None:
     """
-    Params: chat_id, application.
-    Returns: None.
-    Description: Close the round, trigger validation, scoring, and leaderboard.
-    Examples:
-        Input: chat_id=1001, app=<Application>
-        Output: None
+    Cancel previously scheduled round-end job (if exists).
     """
-    _result: RoundResult = finalize_round(chat_id)
-    # TODO: validate answers, score, store, and send leaderboard.
+    job_name = f"round_end_{chat_id}"
+    current_jobs = app.job_queue.get_jobs_by_name(job_name)
+
+    for job in current_jobs:
+        job.schedule_removal()
+
+
+async def _end_round_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Internal JobQueue callback.
+    """
+    chat_id = context.job.data["chat_id"]
+    await end_round(chat_id, context.application)
+
+
+async def end_round(chat_id: int, app: Application) -> None:
+    """
+    Safely end the round.
+    """
+
+    # If no active round — ignore
+    if not is_round_active(chat_id):
+        return
+
+    result: RoundResult = finalize_round(chat_id)
+
+    await app.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"⏰ Time's up!\n\n"
+            f"Round {result.round_number} finished.\n"
+            f"Letter: {result.letter}\n"
+            f"Category: {result.category}\n"
+            f"Answers received: {len(result.answers)}"
+        ),
+    )
+
+    # Future integration point:
+    # - validation
+    # - scoring
+    # - leaderboard
