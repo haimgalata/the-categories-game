@@ -10,16 +10,17 @@ from .game_state import (
     finalize_round,
     set_round_prompt,
     is_round_active,
+    is_game_over,
+    add_points,
+    get_scores,
+    reset_game,
 )
 from .models import RoundResult
+from .validation import validate_answer_groq
 
 
-ROUND_DURATION_SECONDS = 30
+ROUND_DURATION_SECONDS = 5
 
-
-# -------------------------
-# Selection helpers
-# -------------------------
 
 def pick_letter() -> str:
     return random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -31,20 +32,10 @@ def pick_category(categories: List[str]) -> str:
     return random.choice(categories)
 
 
-# -------------------------
-# Round lifecycle
-# -------------------------
-
 async def start_round(chat_id: int, app: Application) -> None:
-    """
-    Start a new round safely.
-    """
-
-    # Prevent double round
     if is_round_active(chat_id):
         return
 
-    # Cancel any leftover scheduled job
     _cancel_existing_job(chat_id, app)
 
     letter = pick_letter()
@@ -66,10 +57,6 @@ async def start_round(chat_id: int, app: Application) -> None:
 
 
 def schedule_round_end(chat_id: int, app: Application, seconds: int):
-    """
-    Schedule round ending using PTB JobQueue.
-    """
-
     return app.job_queue.run_once(
         _end_round_job,
         when=seconds,
@@ -78,33 +65,24 @@ def schedule_round_end(chat_id: int, app: Application, seconds: int):
     )
 
 
-def _cancel_existing_job(chat_id: int, app: Application) -> None:
-    """
-    Cancel previously scheduled round-end job (if exists).
-    """
+def _cancel_existing_job(chat_id: int, app: Application):
     job_name = f"round_end_{chat_id}"
-    current_jobs = app.job_queue.get_jobs_by_name(job_name)
-
-    for job in current_jobs:
+    jobs = app.job_queue.get_jobs_by_name(job_name)
+    for job in jobs:
         job.schedule_removal()
 
 
-async def _end_round_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Internal JobQueue callback.
-    """
+async def _end_round_job(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data["chat_id"]
     await end_round(chat_id, context.application)
 
 
 async def end_round(chat_id: int, app: Application) -> None:
-    """
-    Safely end the round.
-    """
-
-    # If no active round — ignore
     if not is_round_active(chat_id):
         return
+
+    # ❗ חשוב: לבטל טיימר קיים
+    _cancel_existing_job(chat_id, app)
 
     result: RoundResult = finalize_round(chat_id)
 
@@ -113,13 +91,47 @@ async def end_round(chat_id: int, app: Application) -> None:
         text=(
             f"⏰ Time's up!\n\n"
             f"Round {result.round_number} finished.\n"
-            f"Letter: {result.letter}\n"
-            f"Category: {result.category}\n"
             f"Answers received: {len(result.answers)}"
         ),
     )
 
-    # Future integration point:
-    # - validation
-    # - scoring
-    # - leaderboard
+    # --- Validation + Scoring ---
+    for draft in result.answers:
+        try:
+            validation = validate_answer_groq(
+                draft.text,
+                result.letter,
+                result.category,
+            )
+        except Exception:
+            continue
+
+        if validation.valid:
+            add_points(chat_id, draft.user_id, 1)
+
+    # --- Game Flow ---
+    if is_game_over(chat_id):
+        await _show_final_scores(chat_id, app)
+    else:
+        await start_round(chat_id, app)
+
+
+async def _show_final_scores(chat_id: int, app: Application):
+    scores = get_scores(chat_id)
+
+    if not scores:
+        text = "🏁 Game Over!\nNo points scored."
+    else:
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        text = "🏁 Game Over!\n\n📊 Final Scores:\n\n"
+
+        medals = ["🥇", "🥈", "🥉"]
+
+        for i, (user_id, points) in enumerate(sorted_scores):
+            user = await app.bot.get_chat_member(chat_id, user_id)
+            name = user.user.first_name
+            medal = medals[i] if i < 3 else "•"
+            text += f"{medal} {name} - {points} pts\n"
+
+    await app.bot.send_message(chat_id, text)
+    reset_game(chat_id)
