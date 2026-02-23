@@ -24,6 +24,8 @@ class Answer:
     valid: bool
     score: int
     response_ms: int
+    letter: str = ""
+    category: str = ""
 
 
 @dataclass
@@ -131,6 +133,8 @@ def new_answer(
     score: int,
     response_ms: int,
     username: str = "",
+    letter: str = "",
+    category: str = "",
 ) -> Answer:
     """
     Params: game_id, round_id, user_id, raw_text, corrected_text, valid, score, response_ms, username.
@@ -147,6 +151,8 @@ def new_answer(
         username=username,
         raw_text=raw_text,
         corrected_text=corrected_text,
+        letter=letter,
+        category=category,
         valid=valid,
         score=score,
         response_ms=response_ms,
