@@ -18,23 +18,18 @@ _CATEGORIES = [
 
 def load_categories() -> List[str]:
     """
-    Params: none.
-    Returns: list of categories.
-    Description: Provide the base category list (static or from file).
-    Examples:
-        Input: none
-        Output: ["City", "Country", "Food", "..."]
+    Provide the base category list.
     """
+    # Return a copy to avoid accidental mutation
     return list(_CATEGORIES)
 
 
 def normalize_category(name: str) -> str:
     """
-    Params: category name.
-    Returns: normalized category string.
-    Description: Normalize category comparisons.
-    Examples:
-        Input: "  City "
-        Output: "city"
+    Normalize category comparisons.
     """
-    return name.strip().lower()
+    if not isinstance(name, str):
+        return ""
+
+    # Remove extra spaces and normalize case
+    return " ".join(name.strip().lower().split())
