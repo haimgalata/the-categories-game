@@ -79,11 +79,13 @@ def get_db(uri: str) -> Any:
         Output: <Database>
     """
     from pymongo import MongoClient
+    from pymongo.errors import ConfigurationError
 
     global _DB
     client = MongoClient(uri)
-    db = client.get_default_database()
-    if db is None:
+    try:
+        db = client.get_default_database()
+    except ConfigurationError:
         db = client["categories_game"]
     _DB = db
     return db

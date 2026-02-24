@@ -70,6 +70,22 @@ def update_player_stats(
     return stats
 
 
+def score_by_position(position: int) -> int:
+    """
+    Params: 0-based position among valid answers sorted by response time.
+    Returns: points for that position.
+    Description: 1st correct = 10, 2nd = 8, 3rd = 6, 4th = 4, 5th+ = 2.
+    Examples:
+        Input: position=0
+        Output: 10
+        Input: position=1
+        Output: 8
+        Input: position=4
+        Output: 2
+    """
+    return max(2, 10 - 2 * position)
+
+
 def compute_leaderboard(players: List[PlayerStats]) -> List[PlayerStats]:
     """
     Params: list of player stats.
