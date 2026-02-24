@@ -4,8 +4,6 @@ from typing import Dict, List
 
 from .models import AnswerDraft, GameState, RoundResult, now_ms, new_game_state
 
-MAX_ROUNDS = 5
-
 _GAMES: Dict[int, GameState] = {}
 
 
@@ -16,14 +14,45 @@ _GAMES: Dict[int, GameState] = {}
 def get_or_create_game(chat_id: int) -> GameState:
     if chat_id not in _GAMES:
         _GAMES[chat_id] = new_game_state(chat_id)
-        _GAMES[chat_id].scores = {}
-        _GAMES[chat_id].current_round = 0
-        _GAMES[chat_id].max_rounds = MAX_ROUNDS
     return _GAMES[chat_id]
 
 
 def reset_game(chat_id: int) -> None:
     _GAMES.pop(chat_id, None)
+
+
+def get_game(chat_id: int) -> GameState | None:
+    return _GAMES.get(chat_id)
+
+
+# ---------------------------------------
+# Setup helpers
+# ---------------------------------------
+
+def configure_game(
+    chat_id: int,
+    num_players: int,
+    round_duration: int,
+) -> GameState:
+    """Store player count and round duration before starting."""
+    game = get_or_create_game(chat_id)
+    game.num_players = num_players
+    game.round_duration = round_duration
+    return game
+
+
+def get_num_players(chat_id: int) -> int:
+    game = _GAMES.get(chat_id)
+    if not game:
+        return 0
+    return game.num_players
+
+
+def get_round_duration(chat_id: int) -> int:
+    game = _GAMES.get(chat_id)
+    if not game:
+        return 30
+    return game.round_duration
 
 
 # ---------------------------------------
@@ -37,7 +66,6 @@ def is_round_active(chat_id: int) -> bool:
 
 def set_round_prompt(chat_id: int, letter: str, category: str) -> None:
     game = get_or_create_game(chat_id)
-
     game.current_round += 1
     game.round_active = True
     game.round_letter = letter
@@ -71,7 +99,6 @@ def get_round_answers(chat_id: int) -> List[AnswerDraft]:
 
 def finalize_round(chat_id: int) -> RoundResult:
     game = get_or_create_game(chat_id)
-
     game.round_active = False
 
     return RoundResult(
@@ -104,3 +131,10 @@ def is_game_over(chat_id: int) -> bool:
     if not game:
         return False
     return game.current_round >= game.max_rounds
+
+
+def extend_game(chat_id: int) -> None:
+    """Allow one more round after the initial max_rounds."""
+    game = _GAMES.get(chat_id)
+    if game:
+        game.max_rounds += 1

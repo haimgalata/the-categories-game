@@ -60,6 +60,10 @@ class GameState:
     round_category: str = ""
     round_started_ms: int = 0
     answers: Dict[int, AnswerDraft] = field(default_factory=dict)
+    scores: Dict[int, int] = field(default_factory=dict)
+    max_rounds: int = 5
+    num_players: int = 2
+    round_duration: int = 30
 
 
 @dataclass

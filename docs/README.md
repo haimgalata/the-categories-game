@@ -8,7 +8,7 @@ You can use it as a checklist while you implement code later.
 - Run a full 5‑round Categories game in a Telegram group.
 - Randomly pick a letter (A‑Z) and a category from a list each round.
 - Give each player 30 seconds to answer.
-- Validate answers with Groq (strict JSON) for correctness, spelling, and category match.
+- Validate answers with Groq (strict JSON) for correctness, spelling, and category match. 
 - Score based on correctness + response time.
 - Store correct answers in MongoDB and reject repeats.
 - After each round, show a live leaderboard.
@@ -297,7 +297,7 @@ Description: Build a strict JSON prompt for Groq.
 `validate_answer_groq(answer: str, letter: str, category: str) -> ValidationResult`  
 Params: answer text, letter, category.  
 Returns: ValidationResult with valid/corrected/reason.  
-Description: Call Groq and parse response.
+Description: Call Groq and parse response
 
 `parse_groq_response(text: str) -> ValidationResult`  
 Params: raw Groq response text.  

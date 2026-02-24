@@ -71,17 +71,20 @@ def _require_db() -> Any:
 
 def get_db(uri: str) -> Any:
     """
-    Connect to MongoDB Atlas and return the categories_game database.
+    Params: MongoDB connection string.
+    Returns: Database handle.
+    Description: Connect to MongoDB and return a DB object.
+    Examples:
+        Input: uri="mongodb://localhost:27017"
+        Output: <Database>
     """
     from pymongo import MongoClient
 
     global _DB
-
     client = MongoClient(uri)
-
-    # בוחרים DB מפורש במקום get_default_database
-    db = client["categories_game"]
-
+    db = client.get_default_database()
+    if db is None:
+        db = client["categories_game"]
     _DB = db
     return db
 
