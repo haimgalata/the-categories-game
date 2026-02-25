@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 _CATEGORIES = [
+    # Classic
     "City",
     "Country",
     "Food",
@@ -13,6 +14,42 @@ _CATEGORIES = [
     "Famous Person",
     "Brand",
     "Car",
+
+    # Funny
+    "Excuse For Being Late",
+    "Bad Superpower",
+    "Embarrassing Thing",
+    "Pick Up Line",
+    "Villain Name",
+
+    # Modern / Tech
+    "App",
+    "Video Game",
+    "Programming Language",
+    "AI Tool",
+    "Tech Company",
+
+    # Creative / Hard
+    "Emotion",
+    "Phobia",
+    "Historical Event",
+    "Mythical Creature",
+
+    # Pop Culture
+    "TV Show",
+    "Superhero",
+    "Disney Character",
+    "Cartoon Character",
+    "Anime",
+    "Villain",
+
+    # Group Chaos
+    "Reason To Break Up",
+    "Awkward Situation",
+    "Something Overrated",
+    "Red Flag",
+    "Green Flag",
+    "Something Illegal",
 ]
 
 
