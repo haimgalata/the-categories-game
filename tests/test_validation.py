@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.models import ValidationResult
-from src.validation import parse_groq_response, validate_answer_groq
+from src.models import ValidationResult, ValidatorInput
+from src.validation import parse_groq_response, validate_answer_groq, validate_submission
 
 
 def test_parse_groq_response_ok() -> None:
@@ -33,10 +33,10 @@ def test_validate_answer_groq_requires_key() -> None:
         Input: no env key
         Output: RuntimeError
     """
-    if "GROQ_API_KEY" in os.environ:
-        del os.environ["GROQ_API_KEY"]
-    with pytest.raises(RuntimeError):
-        validate_answer_groq("Cairo", "C", "City")
+    with patch("src.validation.get_settings") as mocked:
+        mocked.return_value = type("S", (), {"groq_api_key": ""})()
+        with pytest.raises(RuntimeError):
+            validate_answer_groq("Cairo", "C", "City")
 
 
 def test_validate_answer_groq_letter_mismatch_forces_invalid() -> None:
@@ -168,3 +168,78 @@ def test_validate_answer_groq_chile_country_false() -> None:
     with patch("src.validation.requests.post", return_value=fake_response):
         result = validate_answer_groq("Chile", "C", "Country")
         assert result.valid is False
+
+
+def test_validate_submission_round_closed() -> None:
+    payload = ValidatorInput(
+        letter="C",
+        category="Cities",
+        answer="Cairo",
+        accepted_answers=[],
+        round_active=False,
+        time_remaining=0,
+        player_name="Alex",
+        message_id="123",
+        round_id="r1",
+    )
+    result = validate_submission(payload)
+    assert result.valid is False
+    assert result.reason == "round_closed"
+
+
+def test_validate_submission_ignores_the_for_letter() -> None:
+    with patch("src.validation.validate_answer_groq") as mocked:
+        mocked.return_value = ValidationResult(
+            valid=True,
+            corrected="The Cairo",
+            reason="ok",
+            category_match=True,
+        )
+        payload = ValidatorInput(
+            letter="C",
+            category="Cities",
+            answer="The Cairo",
+            accepted_answers=[],
+            round_active=True,
+            time_remaining=10,
+            player_name="Alex",
+            message_id="123",
+            round_id="r1",
+        )
+        result = validate_submission(payload)
+    assert result.valid is True
+
+
+def test_validate_submission_duplicate_alias_rejected() -> None:
+    payload = ValidatorInput(
+        letter="N",
+        category="Cities",
+        answer="NYC",
+        accepted_answers=["New York City"],
+        round_active=True,
+        time_remaining=10,
+        player_name="Alex",
+        message_id="123",
+        round_id="r1",
+    )
+    result = validate_submission(payload)
+    assert result.valid is False
+    assert result.reason == "duplicate"
+
+
+def test_validate_submission_rejects_on_llm_failure() -> None:
+    payload = ValidatorInput(
+        letter="C",
+        category="Cities",
+        answer="Cairo",
+        accepted_answers=[],
+        round_active=True,
+        time_remaining=10,
+        player_name="Alex",
+        message_id="123",
+        round_id="r1",
+    )
+    with patch("src.validation.validate_answer_groq", side_effect=RuntimeError("timeout")):
+        result = validate_submission(payload)
+    assert result.valid is False
+    assert result.reason == "fallback_validation_failed"

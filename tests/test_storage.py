@@ -9,6 +9,7 @@ class FakeCollection:
         self.update_calls: List[Tuple[Any, Any, Any]] = []
         self.insert_calls: List[Any] = []
         self.find_one_result: Any = None
+        self.find_one_calls: List[Dict[str, Any]] = []
         self.index_calls: List[Any] = []
 
     def update_one(self, filt: Dict[str, Any], update: Dict[str, Any], upsert: bool = False) -> None:
@@ -18,6 +19,7 @@ class FakeCollection:
         self.insert_calls.append(doc)
 
     def find_one(self, filt: Dict[str, Any]) -> Any:
+        self.find_one_calls.append(filt)
         return self.find_one_result
 
     def create_index(self, keys: Any, unique: bool = False) -> None:
@@ -155,3 +157,11 @@ def test_has_answer_been_used_true_false() -> None:
     assert storage.has_answer_been_used("g1", "C", "City", "Cairo") is False
     db["answers"].find_one_result = {"_id": "x"}
     assert storage.has_answer_been_used("g1", "C", "City", "Cairo") is True
+
+
+def test_has_answer_been_used_alias_canonicalization() -> None:
+    db = FakeDB()
+    storage._DB = db
+    storage.has_answer_been_used("g1", "N", "Cities", "NYC")
+    filt = db["answers"].find_one_calls[0]
+    assert filt["corrected_norm"] == "newyorkcity"

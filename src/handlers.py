@@ -1,144 +1,70 @@
 from __future__ import annotations
 
-import asyncio
+import logging
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ContextTypes,
-    ConversationHandler,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
 
 from .game_state import (
+    get_num_players,
+    get_or_create_game,
+    get_round_duration,
+    get_round_answers,
+    get_scores,
+    is_countdown_active,
     is_round_active,
     record_answer,
     reset_game,
-    get_scores,
-    get_round_answers,
-    get_num_players,
-    configure_game,
-    extend_game,
+    set_group_mode,
 )
 from .models import now_ms
-from .round_logic import start_round, end_round, show_final_scores
+from .round_logic import end_round, show_final_scores, start_round
 
-# ConversationHandler states
-ASK_PLAYERS, ASK_DURATION = range(2)
-
-
-# -------------------------------------------------
-# Setup conversation: /startgame -> ask players -> ask duration -> go
-# -------------------------------------------------
-
-async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    chat_id = update.effective_chat.id
-
-    if is_round_active(chat_id):
-        await update.message.reply_text("⚠️ A round is already active!")
-        return ConversationHandler.END
-
-    await update.message.reply_text("👥 How many players are playing? (send a number)")
-    return ASK_PLAYERS
+logger = logging.getLogger(__name__)
 
 
-async def start_game_from_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Entry point for the 'Start Game' menu button."""
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat.id
-
-    if is_round_active(chat_id):
-        await query.message.reply_text("⚠️ A round is already active!")
-        return ConversationHandler.END
-
-    await query.message.reply_text("👥 How many players are playing? (send a number)")
-    return ASK_PLAYERS
+def _is_group_chat(update: Update) -> bool:
+    chat = update.effective_chat
+    if chat is None:
+        return False
+    return chat.type in {"group", "supergroup"}
 
 
-async def receive_players(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text.strip()
-    if not text.isdigit() or int(text) < 1:
-        await update.message.reply_text("❌ Please send a valid number (1 or more).")
-        return ASK_PLAYERS
-
-    context.chat_data["num_players"] = int(text)
-    await update.message.reply_text("⏱️ How many seconds per round? (send a number)")
-    return ASK_DURATION
-
-
-async def receive_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text.strip()
-    if not text.isdigit() or int(text) < 5:
-        await update.message.reply_text("❌ Please send a valid number (at least 5 seconds).")
-        return ASK_DURATION
-
-    chat_id = update.effective_chat.id
-    num_players = context.chat_data.get("num_players", 2)
-    duration = int(text)
-
-    configure_game(chat_id, num_players=num_players, round_duration=duration)
-
-    await update.message.reply_text(
-        f"✅ Game configured!\n"
-        f"Players: {num_players}\n"
-        f"Round duration: {duration}s\n\n"
-        f"Starting first round in 5 seconds... Get ready! 🎮"
-    )
-
-    await asyncio.sleep(5)
-    await start_round(chat_id, context.application)
-    return ConversationHandler.END
-
-
-async def cancel_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("🛑 Game setup cancelled.")
-    return ConversationHandler.END
-
-
-def build_setup_conversation() -> ConversationHandler:
-    """Build the ConversationHandler for game setup."""
-    return ConversationHandler(
-        entry_points=[
-            CommandHandler("startgame", start_game),
-            CallbackQueryHandler(start_game_from_menu, pattern="^start$"),
-        ],
-        states={
-            ASK_PLAYERS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_players),
-            ],
-            ASK_DURATION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_duration),
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_setup)],
-        per_chat=True,
-        per_user=False,
+def _main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Start Game 🎮", callback_data="start_game")],
+        ]
     )
 
 
-# -------------------------------------------------
-# Commands
-# -------------------------------------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(
+        "🎮 Welcome to Categories!\nPress Start Game to begin.",
+        reply_markup=_main_keyboard(),
+    )
+
+
+async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(
+        "🎮 Categories Game Menu",
+        reply_markup=_main_keyboard(),
+    )
+
 
 async def stop_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     reset_game(chat_id)
-    await update.message.reply_text("🛑 Game stopped and reset.")
+    await update.effective_message.reply_text("🛑 Game stopped and reset.")
 
 
 async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     scores = get_scores(chat_id)
-
     if not scores:
-        await update.message.reply_text("📊 No scores yet.")
+        await update.effective_message.reply_text("📊 No scores yet.")
         return
-
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
     text = "📊 Current Scores:\n\n"
     for user_id, points in sorted_scores:
         try:
@@ -147,105 +73,115 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             name = str(user_id)
         text += f"{name} - {points} pts\n"
-
     await update.effective_message.reply_text(text)
 
 
-# -------------------------------------------------
-# Message Answers
-# -------------------------------------------------
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.effective_chat.id
+    message = update.effective_message
+    if message is None or not message.text:
+        return
+    text = message.text.strip()
+    if not text:
+        return
 
+    chat_id = update.effective_chat.id
+    is_group = _is_group_chat(update)
+    if is_group and text.lower() == "start":
+        await _start_game_from_message(update, context)
+        return
+
+    if is_countdown_active(chat_id):
+        return
     if not is_round_active(chat_id):
         return
 
     user = update.effective_user
-    text = update.message.text.strip()
-
     accepted = record_answer(
         chat_id=chat_id,
         user_id=user.id,
+        player_name=user.first_name or "Player",
         text=text,
         ts_ms=now_ms(),
+        message_id=str(message.message_id),
     )
-
     if not accepted:
-        await update.message.reply_text("⚠️ You already answered this round.")
         return
 
-    # End early if all declared players have answered
-    num_players = get_num_players(chat_id)
-    if num_players > 0 and len(get_round_answers(chat_id)) >= num_players:
+    # If everyone in chat has sent one answer, close early.
+    target_answers = max(2 if is_group else 1, get_num_players(chat_id))
+    if len(get_round_answers(chat_id)) >= target_answers:
         await end_round(chat_id, context.application)
 
 
-# -------------------------------------------------
-# Menu UI
-# -------------------------------------------------
-
-async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("▶️ Start Game", callback_data="start")],
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.effective_message.reply_text(
-        "🎮 Categories Game Menu:",
-        reply_markup=reply_markup,
+async def _start_game_from_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+    await _start_game(
+        chat_id=chat.id,
+        chat_type=chat.type,
+        send_message=message.reply_text,
+        app=context.application,
     )
 
 
-# -------------------------------------------------
-# Button Callbacks
-# -------------------------------------------------
+async def _start_game(
+    *,
+    chat_id: int,
+    chat_type: str,
+    send_message,
+    app,
+) -> None:
+    if is_round_active(chat_id) or is_countdown_active(chat_id):
+        return
+    game = get_or_create_game(chat_id)
+    set_group_mode(chat_id, chat_type in {"group", "supergroup"})
+    round_duration = get_round_duration(chat_id)
+    intro_text = (
+        "🎮 New Game Started!\n\n"
+        f"You will play {game.max_rounds} rounds.\n"
+        f"⏱️ Each round: {round_duration} seconds\n"
+        "Get ready!"
+    )
+    start_message = await send_message(f"{intro_text}\n\n⏳ Starting in 5...")
+    await start_round(
+        chat_id,
+        app,
+        countdown_message_id=start_message.message_id,
+        countdown_prefix="⏳ Starting in",
+        intro_text=intro_text,
+    )
 
-async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-
     chat_id = query.message.chat.id
     data = query.data
+    logger.info("Callback received chat_id=%s data=%s", chat_id, data)
 
-    # STOP
-    if data == "stop":
-        reset_game(chat_id)
-        await query.message.reply_text("🛑 Game stopped and reset.")
+    if data == "start_game":
+        await _start_game(
+            chat_id=chat_id,
+            chat_type=query.message.chat.type,
+            send_message=query.message.reply_text,
+            app=context.application,
+        )
+        return
 
-    # SCORE
-    elif data == "score":
-        scores = get_scores(chat_id)
-
-        if not scores:
-            await query.message.reply_text("📊 No scores yet.")
+    if data == "next_round":
+        if is_round_active(chat_id) or is_countdown_active(chat_id):
+            await query.message.reply_text("⚠️ Finish the current round first.")
             return
+        await start_round(chat_id, context.application)
+        return
 
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        text = "📊 Current Scores:\n\n"
-
-        for user_id, points in sorted_scores:
-            try:
-                user = await context.application.bot.get_chat_member(chat_id, user_id)
-                name = user.user.first_name
-            except Exception:
-                name = str(user_id)
-            text += f"{name} - {points} pts\n"
-
-        await query.message.reply_text(text)
-
-    # END GAME
-    elif data == "end":
+    if data == "finish_game":
+        if is_countdown_active(chat_id):
+            await query.message.reply_text("⚠️ Finish the current round first.")
+            return
         if is_round_active(chat_id):
             await end_round(chat_id, context.application)
-        await show_final_scores(chat_id, context.application)
-
-    # CONTINUE after 5 rounds
-    elif data == "continue_game":
-        extend_game(chat_id)
-        await start_round(chat_id, context.application)
-
-    # FINISH after 5 rounds
-    elif data == "finish_game":
+            return
         await show_final_scores(chat_id, context.application)

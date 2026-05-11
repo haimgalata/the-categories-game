@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from .config import get_settings
 from .models import Answer, GameState, PlayerStats, Round
+from .validation import canonicalize_answer
 
 _DB = None
 
 
 def _normalize_text(text: str) -> str:
-    return text.strip().lower()
+    return canonicalize_answer(text)
 
 
 def _game_doc(game: GameState) -> Dict[str, Any]:
@@ -184,6 +186,8 @@ def has_answer_been_used(
         Input: game_id="g1", letter="C", category="City", corrected_text="Cairo"
         Output: False
     """
+    if not get_settings().enable_duplicate_check:
+        return False
     db = _require_db()
     normalized = _normalize_text(corrected_text)
     hit = db["answers"].find_one(

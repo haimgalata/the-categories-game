@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import time
 import uuid
 
@@ -9,8 +9,10 @@ import uuid
 @dataclass
 class AnswerDraft:
     user_id: int
+    player_name: str
     text: str
     ts_ms: int
+    message_id: str
 
 
 @dataclass
@@ -56,14 +58,21 @@ class GameState:
     game_id: str
     current_round: int = 0
     round_active: bool = False
+    round_id: str = ""
     round_letter: str = ""
     round_category: str = ""
     round_started_ms: int = 0
+    round_message_id: int = 0
+    timer_message_id: int = 0
+    pinned_message_id: int = 0
+    countdown_active: bool = False
     answers: Dict[int, AnswerDraft] = field(default_factory=dict)
+    participant_ids: set[int] = field(default_factory=set)
     scores: Dict[int, int] = field(default_factory=dict)
     max_rounds: int = 5
     num_players: int = 2
     round_duration: int = 30
+    is_group_mode: bool = False
 
 
 @dataclass
@@ -72,6 +81,55 @@ class ValidationResult:
     corrected: str
     reason: str
     category_match: bool
+
+
+@dataclass
+class ValidatorInput:
+    letter: str
+    category: str
+    answer: str
+    accepted_answers: List[str]
+    round_active: bool
+    time_remaining: int
+    player_name: str
+    message_id: str
+    round_id: str
+
+
+@dataclass
+class ValidatorUiActions:
+    reply_to_message_id: str
+    pin_round: bool
+    highlight: bool
+    ignore_if_round_inactive: bool = True
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "reply_to_message_id": self.reply_to_message_id,
+            "pin_round": self.pin_round,
+            "highlight": self.highlight,
+            "ignore_if_round_inactive": self.ignore_if_round_inactive,
+        }
+
+
+@dataclass
+class ValidatorOutput:
+    valid: bool
+    corrected_answer: str
+    reason: str
+    message: str
+    uncertain: bool
+    ui_actions: ValidatorUiActions
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "valid": self.valid,
+            "corrected_answer": self.corrected_answer,
+            "reason": self.reason,
+            "message": self.message,
+            "uncertain": self.uncertain,
+            "ui_actions": self.ui_actions.as_dict(),
+        }
 
 
 @dataclass

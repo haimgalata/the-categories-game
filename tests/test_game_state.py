@@ -52,8 +52,8 @@ def test_record_answer_accepts_first_only() -> None:
     """
     reset_game(3)
     set_round_prompt(3, "C", "City")
-    accepted = record_answer(3, 10, "Cairo", 1000)
-    rejected = record_answer(3, 10, "Cairo", 2000)
+    accepted = record_answer(3, 10, "Alex", "Cairo", 1000, "101")
+    rejected = record_answer(3, 10, "Alex", "Cairo", 2000, "102")
     assert accepted is True
     assert rejected is False
 
@@ -68,7 +68,7 @@ def test_record_answer_rejects_when_no_round() -> None:
         Output: False
     """
     reset_game(4)
-    assert record_answer(4, 1, "Cairo", 1000) is False
+    assert record_answer(4, 1, "Alex", "Cairo", 1000, "101") is False
 
 
 def test_get_round_answers_returns_list() -> None:
@@ -82,8 +82,8 @@ def test_get_round_answers_returns_list() -> None:
     """
     reset_game(5)
     set_round_prompt(5, "C", "City")
-    record_answer(5, 1, "Cairo", 1000)
-    record_answer(5, 2, "Chicago", 1100)
+    record_answer(5, 1, "Alex", "Cairo", 1000, "101")
+    record_answer(5, 2, "Sam", "Chicago", 1100, "102")
     answers = get_round_answers(5)
     assert len(answers) == 2
 
@@ -99,7 +99,7 @@ def test_finalize_round_ends_round() -> None:
     """
     reset_game(6)
     set_round_prompt(6, "C", "City")
-    record_answer(6, 1, "Cairo", 1000)
+    record_answer(6, 1, "Alex", "Cairo", 1000, "101")
     result = finalize_round(6)
     game = get_or_create_game(6)
     assert game.round_active is False

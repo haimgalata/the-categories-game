@@ -12,12 +12,12 @@ from telegram.ext import (
 )
 
 from .handlers import (
+    start,
     stop_game,
     score,
     handle_message,
     show_menu,
     menu_callback,
-    build_setup_conversation,
 )
 
 # -------------------------------------------------
@@ -51,10 +51,8 @@ def build_application(token: str) -> Application:
 # -------------------------------------------------
 
 def register_handlers(app: Application) -> None:
-    # ---- Setup conversation (/startgame -> ask players -> ask duration -> go) ----
-    app.add_handler(build_setup_conversation())
-
     # ---- Commands ----
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", show_menu))
     app.add_handler(CommandHandler("stop_game", stop_game))
     app.add_handler(CommandHandler("score", score))
