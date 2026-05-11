@@ -27,8 +27,7 @@
 
 <div align="center">
 
-<!-- Drop your screen recording here: assets/gameplay.gif -->
-<img src="assets/gameplay.gif" width="85%" alt="Gameplay demo" />
+<img src="assets/gameplay.gif" width="320" alt="Gameplay demo" />
 
 <br /><br />
 
